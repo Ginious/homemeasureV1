@@ -1,4 +1,5 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 
@@ -9,38 +10,40 @@
 	<dependencies>
 
 		<!-- SMA Converter Device -->
-		<dependency>
-			<groupId>easymodbus</groupId>
-			<artifactId>easymodbus</artifactId>
-			<version>1.0.0</version>
-		</dependency>
+		<!-- <dependency> -->
+		<!-- <groupId>easymodbus</groupId> -->
+		<!-- <artifactId>easymodbus</artifactId> -->
+		<!-- <version>1.0.0</version> -->
+		<!-- </dependency> -->
 
 		<!-- Volkszaehler Device -->
 		<dependency>
-			<groupId>jsml</groupId>
+			<groupId>org.openmuc</groupId>
 			<artifactId>jsml</artifactId>
-			<version>1.1.1</version>
+			<version>1.1.2</version>
 		</dependency>
 		<dependency>
-			<groupId>jrxtx</groupId>
+			<groupId>org.openmuc</groupId>
 			<artifactId>jrxtx</artifactId>
-			<version>1.0.0</version>
+			<version>1.0.1</version>
 		</dependency>
 
-		<!-- Recorder -->
+		<!-- Optional when running HMServer as MQTT service -->
 		<dependency>
-			<groupId>org.mariadb.jdbc</groupId>
-			<artifactId>mariadb-java-client</artifactId>
-			<version>1.1.7</version>
+			<groupId>org.eclipse.paho</groupId>
+			<artifactId>org.eclipse.paho.client.mqttv3</artifactId>
+			<version>1.2.0</version>
+			<optional>true</optional>
 		</dependency>
 
-		<!-- Core -->
+		<!-- Optional when running HMServer as WebService -->
 		<dependency>
 			<groupId>io.javalin</groupId>
 			<artifactId>javalin</artifactId>
 			<version>1.2.1</version>
+			<optional>true</optional>
 		</dependency>
-		<!-- https://mvnrepository.com/artifact/org.slf4j/slf4j-log4j12 -->
+		
 		<dependency>
 			<groupId>org.slf4j</groupId>
 			<artifactId>slf4j-log4j12</artifactId>
@@ -51,12 +54,21 @@
 			<artifactId>commons-lang</artifactId>
 			<version>2.6</version>
 		</dependency>
+
+		<!-- Testing -->
 		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
 			<version>4.8.2</version>
 			<scope>test</scope>
 		</dependency>
+		<dependency>
+			<groupId>org.mockito</groupId>
+			<artifactId>mockito-all</artifactId>
+			<version>1.9.5</version>
+			<scope>test</scope>
+		</dependency>
+
 
 	</dependencies>
 

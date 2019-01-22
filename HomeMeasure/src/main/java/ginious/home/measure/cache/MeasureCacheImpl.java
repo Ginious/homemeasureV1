@@ -11,7 +11,10 @@ import ginious.home.measure.Measure;
 import ginious.home.measure.MeasureFactory;
 import ginious.home.measure.device.MeasurementDevice;
 
-class MeasureCacheImpl implements MeasureCache {
+/**
+ * Default implementation of a measure cache.
+ */
+final class MeasureCacheImpl implements MeasureCache {
 
 	private List<MeasureListener> measureListeners;
 
@@ -24,14 +27,27 @@ class MeasureCacheImpl implements MeasureCache {
 		inDevices.stream().forEach(d -> registerDevice(d));
 	}
 
+	@Override
+	public void addMeasureListener(MeasureListener inListener) {
+		measureListeners.add(inListener);
+	}
+
+	@Override
 	public Set<String> getDeviceIds() {
 		return measures.keySet();
 	}
 
+	@Override
 	public Collection<Measure> getMeasures(String inDeviceId) {
 		return measures.get(inDeviceId);
 	}
 
+	/**
+	 * Registers the given device by extracting all measures and creating a cache
+	 * adapter for the device.
+	 * 
+	 * @param inDevice The device for the registration of measures to cache.
+	 */
 	private void registerDevice(MeasurementDevice inDevice) {
 
 		for (String lCurrMeasureId : inDevice.getSupportedMeasureIds()) {
@@ -41,11 +57,10 @@ class MeasureCacheImpl implements MeasureCache {
 				lDeviceMeasures = new ArrayList<>();
 				measures.put(inDevice.getId(), lDeviceMeasures);
 			} // if
-			lDeviceMeasures.add(MeasureFactory.createMeasure(lCurrMeasureId));
+			lDeviceMeasures.add(MeasureFactory.createMeasure(inDevice, lCurrMeasureId));
 		} // for
 
-		MeasureCacheAdapter lCacheAdapter = new MeasureCacheAdapterImpl(inDevice.getId(),
-				measures.get(inDevice.getId()));
+		MeasureCacheAdapter lCacheAdapter = new MeasureCacheAdapterImpl(measures.get(inDevice.getId()));
 		measureListeners.forEach(l -> lCacheAdapter.addMeasureListener(l));
 		inDevice.setMeasureCacheAdapter(lCacheAdapter);
 	}

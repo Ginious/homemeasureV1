@@ -8,11 +8,11 @@ import java.sql.Timestamp;
 import java.util.Date;
 import java.util.Properties;
 
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.Validate;
-
 import ginious.home.measure.Measure;
 
+/**
+ * A recorder that is capable of writing measures into a relational database.
+ */
 public final class DatabaseRecorder extends AbstractRecorder {
 
 	private static final String COLUMN_NAME_DATA = "measure_id";
@@ -31,10 +31,21 @@ public final class DatabaseRecorder extends AbstractRecorder {
 	private String url;
 	private String user;
 
-	public DatabaseRecorder() {
-		super("database-recorder");
+	/**
+	 * Default constructor.
+	 * 
+	 * @param inProperties The overall application properties.
+	 */
+	public DatabaseRecorder(Properties inProperties) {
+		super("database-recorder", inProperties);
 	}
 
+	/**
+	 * Creates a connection to the database.
+	 * 
+	 * @return The connection.
+	 * @throws SQLException In case that no connection could be retrieved.
+	 */
 	private Connection getConnection() throws SQLException {
 
 		if (connection == null || connection.isClosed()) {
@@ -45,38 +56,23 @@ public final class DatabaseRecorder extends AbstractRecorder {
 		return connection;
 	}
 
-	/**
-	 * 
-	 * @param inProps
-	 * @param inPropName
-	 * @return
-	 */
-	private String getProperty(Properties inProps, String inPropName) {
+	@Override
+	public void initialize(Properties inProps) {
 
-		String outProperty = inProps.getProperty(inPropName);
-		Validate.isTrue(StringUtils.isNotBlank(outProperty),
-				"Property [" + getId() + "." + inPropName + "] is not provided!");
-
-		return outProperty;
+		url = getProperty(inProps, DB_URL, true);
+		user = getProperty(inProps, DB_USER, true);
+		password = getProperty(inProps, DB_PASSWORD, true);
 	}
 
 	@Override
-	protected void initializeCustom(Properties inProps) {
-
-		url = getProperty(inProps, DB_URL);
-		user = getProperty(inProps, DB_USER);
-		password = getProperty(inProps, DB_PASSWORD);
-	}
-
-	@Override
-	protected void measureChangedCustom(String inDeviceId, Measure inChangedMeasure) {
+	protected void measureChangedCustom(Measure inChangedMeasure) {
 
 		String lInsert = String.format("INSERT INTO %s (%s,%s,%s,%s) VALUES (?,?,?,?)", TABLE_NAME, COLUMN_NAME_DEVICE,
 				COLUMN_NAME_DATA, COLUMN_NAME_VALUE, COLUMN_NAME_TIMESTAMP);
 		try {
 			PreparedStatement lPrepStmt = getConnection().prepareStatement(lInsert);
-			lPrepStmt.setString(1, inDeviceId);
-			lPrepStmt.setString(2, inChangedMeasure.getID());
+			lPrepStmt.setString(1, inChangedMeasure.getDeviceId());
+			lPrepStmt.setString(2, inChangedMeasure.getId());
 			lPrepStmt.setString(3, inChangedMeasure.getValue());
 			lPrepStmt.setTimestamp(4, new Timestamp(new Date().getTime()));
 

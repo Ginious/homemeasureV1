@@ -2,7 +2,15 @@ package ginious.home.measure.cache;
 
 import ginious.home.measure.Measure;
 
+/**
+ * Listener for changed measures.
+ */
 public interface MeasureListener {
 
-	void measureChanged(String inDeviceId, Measure inChangedMeasure);
+	/**
+	 * Called when a measure changed.
+	 * 
+	 * @param inChangedMeasure The measure that has changed.
+	 */
+	void measureChanged(Measure inChangedMeasure);
 }

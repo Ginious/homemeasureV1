@@ -1,18 +1,22 @@
 package ginious.home.measure;
 
+import ginious.home.measure.device.MeasurementDevice;
+
 class MeasureImpl implements Measure {
 
 	private String id;
 	private String value;
+	private String deviceId;
 
-	MeasureImpl(String inId) {
+	MeasureImpl(MeasurementDevice inDevice, String inId) {
 		super();
 
+		deviceId = inDevice.getId();
 		id = inId;
 	}
 
 	@Override
-	public String getID() {
+	public String getId() {
 		return id;
 	}
 
@@ -23,5 +27,10 @@ class MeasureImpl implements Measure {
 
 	public void setValue(String inValue) {
 		value = inValue;
+	}
+
+	@Override
+	public String getDeviceId() {
+		return deviceId;
 	}
 }

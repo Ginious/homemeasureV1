@@ -1,82 +1,115 @@
 package ginious.home.measure.server;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
+import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.Validate;
 
 import ginious.home.measure.cache.MeasureCache;
-import ginious.home.measure.cache.MeasureCacheFactory;
+import ginious.home.measure.cache.MeasureCacheHelper;
 import ginious.home.measure.cache.MeasureListener;
-import ginious.home.measure.cache.serializer.MeasuresSerializer;
 import ginious.home.measure.cache.serializer.MeasuresSerializerFactory;
 import ginious.home.measure.device.MeasurementDevice;
-import ginious.home.measure.device.MeasurementDeviceNotFoundException;
+import ginious.home.measure.device.MeasurementDeviceInitializationException;
 import ginious.home.measure.recorder.Recorder;
-import io.javalin.Context;
-import io.javalin.Javalin;
+import ginious.home.measure.server.service.Service;
+import ginious.home.measure.util.ConfigHelper;
+import ginious.home.measure.util.LogHelper;
 
 /**
- *
+ * Home Measure Server.
  */
-public class HMServer {
+public final class HMServer {
 
-	private static final Logger LOG = Logger.getLogger(HMServer.class.getName());
+	/**
+	 * The type of service handling the kind of output of measures (other service,
+	 * text based).
+	 */
+	private enum ServiceType {
+	MQTT("ginious.home.measure.server.service.MqttPublisherService"), //
+	WS("ginious.home.measure.server.service.WebService");
 
-	private static final String CONFIG_FILE = "hmserver.properties";
+		private String className;
 
-	private static final String CONFIG_ETC = "/etc";
-	private static final String CONFIG_HOME = "/hmserver/config";
-
-	private static final String CONFIG_PARAM_RECORDERS = "RECORDERS";
-	private static final String CONFIG_PARAM_SERIALIZERS = "SERIALIZERS";
-
-	private static final String DEVICE_CONFIG_SEPARATOR = ".";
-
-	private static final String DEVICE_TYPE_POSTFIX = DEVICE_CONFIG_SEPARATOR + "TYPE";
-	private static final String WEB_PARAM_SERIALIZER_ID = "serializer";
-
-	public static void main(String[] args) throws MeasurementDeviceNotFoundException {
-
-		LOG.info("HMServer starting ...");
-		try {
-		new HMServer().startup();
-		} catch(Throwable t) {
-			LOG.log(Level.SEVERE, "Server reported a serious problem!", t);
+		private ServiceType(String inServiceClassName) {
+			className = inServiceClassName;
 		}
+
+		public String getClassName() {
+			return className;
+		}
+	};
+
+	private static final String CONFIG_KEY_RECORDERS = "RECORDERS";
+	private static final String CONFIG_KEY_SEPARATOR = ".";
+	private static final String CONFIG_KEY_SERIALIZERS = "SERIALIZERS";
+	private static final String CONFIG_KEY_SERVICE = "SERVICE";
+	private static final String DEVICE_TYPE_POSTFIX = CONFIG_KEY_SEPARATOR + "TYPE";
+
+	/**
+	 * Starts the server.
+	 * 
+	 * @param inArgs No properties required - configuration will be loaded from one
+	 *               of the hmserver.ini files.
+	 */
+	public static void main(String[] inArgs) {
+
+		LogHelper.logInfo(HMServer.class, "HMServer starting ...");
+		try {
+			new HMServer().startup();
+		} catch (IllegalArgumentException e) {
+			LogHelper.logError(HMServer.class, "Server could not be started - Reason: " + e.getMessage());
+			System.exit(1);
+		} catch (Throwable t) {
+			LogHelper.logError(HMServer.class, t, "Server died due to a serious problem!");
+			System.exit(1);
+		} // catch
 	}
 
+	/**
+	 * The cache of measures.
+	 */
 	private MeasureCache cache;
 
+	/**
+	 * The list of devices currently running.
+	 */
 	private List<MeasurementDevice> runningDevices = new ArrayList<>();
 
-	public HMServer() {
+	/**
+	 * The underlying service.
+	 */
+	private Service service;
+
+	/**
+	 * The properties of the configured service.
+	 */
+	private Properties serviceProperties;
+
+	/**
+	 * The type of the underlying service.
+	 */
+	private ServiceType typeOfService;
+
+	/**
+	 * Default application constructor.
+	 */
+	private HMServer() {
 		super();
 	}
 
-	private void switchDevicesOn(List<MeasurementDevice> inDevices) {
-
-		for (MeasurementDevice lCurrDevice : inDevices) {
-
-			runningDevices.add(lCurrDevice);
-
-			Runnable lRunnableDevice = new RunnableMeasureDeviceSupport(lCurrDevice);
-			Thread lDeviceThread = new Thread(lRunnableDevice, lCurrDevice.getClass().getSimpleName());
-			lDeviceThread.start();
-		} // for
-	}
-
+	/**
+	 * Initialization of the specific device configuration.
+	 * 
+	 * @param aDevice       The device to initialize.
+	 * @param aDeviceConfig The device specific configuration.
+	 */
 	private void initDeviceConfig(MeasurementDevice aDevice, Properties aDeviceConfig) {
 
 		for (String lCurrSettingName : aDeviceConfig.stringPropertyNames()) {
-			String lDeviceSettingPrefix = aDevice.getId() + DEVICE_CONFIG_SEPARATOR;
+			String lDeviceSettingPrefix = aDevice.getId() + CONFIG_KEY_SEPARATOR;
 			if (lCurrSettingName.startsWith(lDeviceSettingPrefix)
 					&& !StringUtils.endsWith(lCurrSettingName, DEVICE_TYPE_POSTFIX)) {
 				String lDeviceSettingName = StringUtils.substringAfter(lCurrSettingName, lDeviceSettingPrefix);
@@ -87,53 +120,15 @@ public class HMServer {
 	}
 
 	/**
-	 * Loads configuration from <b>USER_HOME/hmserver/config/hmserver.properties</b>
-	 * oder from <b>/etc/hmserver/config/hmserver.properties</b> if the file is not
-	 * provided in USER_HOME.
+	 * Initialization of available devices.
 	 * 
-	 * @return The loaded configuration.
+	 * @param aOverallDeviceConfig The overall application configuration from
+	 *                             hmserver.ini
+	 * @return The list of devices that were created.
+	 * @throws MeasurementDeviceInitializationException
 	 */
-	private Properties loadConfiguration() {
-
-		Properties outProperties = new Properties();
-
-		String CONFIG_USER_HOME = "user.home";
-		File lConfigFile = new File(System.getProperty(CONFIG_USER_HOME) + CONFIG_HOME, CONFIG_FILE);
-		if (!lConfigFile.exists()) {
-			lConfigFile = new File(DEVICE_CONFIG_SEPARATOR, CONFIG_ETC + CONFIG_HOME + "/" + CONFIG_FILE);
-		} // if
-		if (!lConfigFile.exists()) {
-			lConfigFile = new File(CONFIG_ETC + CONFIG_HOME + "/" + CONFIG_FILE);
-		}
-		Validate.isTrue(lConfigFile.exists(), "Config folder [" + lConfigFile + "] could not be found!");
-
-		LOG.info("Loading configuration from " + lConfigFile.getAbsolutePath());
-		try {
-			outProperties.load(new FileInputStream(lConfigFile));
-		} catch (IOException e) {
-			throw new RuntimeException(
-					"Properties could not be loaded from file [" + lConfigFile.getAbsolutePath() + "]!");
-		} // catch
-
-		return outProperties;
-	}
-
-	private Properties extractProperties(Properties inProperties, String inPrefix) {
-
-		Properties outProps = new Properties();
-
-		for (String lCurrPropName : inProperties.stringPropertyNames()) {
-			if (lCurrPropName.startsWith(inPrefix)) {
-				String lPropNameWithoutPrefix = StringUtils.remove(lCurrPropName, inPrefix + ".");
-				outProps.setProperty(lPropNameWithoutPrefix, inProperties.getProperty(lCurrPropName));
-			} // if
-		} // while
-
-		return outProps;
-	}
-
-	private List<MeasurementDevice> prepareDevices(Properties aOverallDeviceConfig)
-			throws MeasurementDeviceNotFoundException {
+	private List<MeasurementDevice> initDevices(Properties aOverallDeviceConfig)
+			throws MeasurementDeviceInitializationException {
 
 		List<MeasurementDevice> lDevices = new ArrayList<>();
 		for (String lCurrSetting : aOverallDeviceConfig.stringPropertyNames()) {
@@ -146,55 +141,60 @@ public class HMServer {
 					Class<?> lDeviceClass = Class.forName(lDeviceTypeName);
 					lDevice = (MeasurementDevice) lDeviceClass.newInstance();
 				} catch (Throwable t) {
-					throw new MeasurementDeviceNotFoundException(lDeviceTypeName, t.getMessage());
+					throw new MeasurementDeviceInitializationException(lDeviceTypeName, t.getMessage());
 				} // catch
 
 				initDeviceConfig(lDevice, aOverallDeviceConfig);
 
 				lDevices.add(lDevice);
-				LOG.info("Added Device [" + lDevice.getId() + "] of type [" + lDevice.getClass().getName() + "].");
+				LogHelper.logInfo(this, "Initialized device [{0}] from type [{1}]", lDevice.getId(),
+						lDevice.getClass().getName());
 			} // if
 		} // while
 
 		return lDevices;
 	}
 
-	private String serializeMeasures(Context inContext) {
+	/**
+	 * Initialization of optionally defined recorders.
+	 * 
+	 * @param inApplicationProps The overall application properties.
+	 * @param aDeviceList        The list of all devices that provide changed
+	 *                           measures that finally will be recorded.
+	 */
+	private void initRecorders(Properties inApplicationProps, List<MeasurementDevice> aDeviceList) {
 
-		String lSerializerId = inContext.request().getParameter(WEB_PARAM_SERIALIZER_ID);
-		MeasuresSerializer lSerializer = MeasuresSerializerFactory.getSerializer(lSerializerId);
+		List<MeasureListener> lListeners = new ArrayList<>();
 
-		return lSerializer.serialize(cache);
-	}
+		// Recorders
+		String lRecorderClassNames = inApplicationProps.getProperty(CONFIG_KEY_RECORDERS);
+		String[] lClassNames = StringUtils.split(lRecorderClassNames, " ,;:");
+		if (lClassNames != null) {
+			for (String lCurrRecorderClassName : lClassNames) {
+				try {
+					Class<?> lRecorderClass = Class.forName(lCurrRecorderClassName);
+					Constructor<?> lConstr = lRecorderClass.getConstructor(Properties.class);
+					Recorder lRecorder = (Recorder) lConstr.newInstance(inApplicationProps);
+					lListeners.add(lRecorder);
+				} catch (Throwable t) {
+					LogHelper.logError(this, t, "Failed to create logger!");
+					throw new IllegalArgumentException(
+							"Recorder [" + lCurrRecorderClassName + "] could not be found or initialized!", t);
+				} // catch
+			} // for
+		} // if
 
-	private void shutdown() {
-
-		for (MeasurementDevice lCurrDevice : runningDevices) {
-			lCurrDevice.switchOff();
-		} // for
-	}
-
-	private void startup() throws MeasurementDeviceNotFoundException {
-
-		Properties lApplicationProps = loadConfiguration();
-		List<MeasurementDevice> lDevices = prepareDevices(lApplicationProps);
-		List<MeasureListener> lMeasureListeners = prepareMessageListeners(lApplicationProps);
-		cache = MeasureCacheFactory.createCache(lDevices, lMeasureListeners);
-		initSerializers(lApplicationProps);
-		switchDevicesOn(lDevices);
-		startWeb();
+		cache = MeasureCacheHelper.createCache(aDeviceList, lListeners);
 	}
 
 	/**
-	 * Initializes custom serializers that are provided in the settings as separated
-	 * values.
+	 * Initialization of optionally defined serializers.
 	 * 
-	 * @param inApplicationProps
-	 *            The application properties.
+	 * @param inApplicationProps The overall application properties.
 	 */
 	private void initSerializers(Properties inApplicationProps) {
 
-		String lSerializerClassNames = inApplicationProps.getProperty(CONFIG_PARAM_SERIALIZERS);
+		String lSerializerClassNames = inApplicationProps.getProperty(CONFIG_KEY_SERIALIZERS);
 		String[] lClassNames = StringUtils.split(lSerializerClassNames, " ,;:");
 		if (lClassNames != null) {
 			MeasuresSerializerFactory.init(lClassNames);
@@ -202,41 +202,104 @@ public class HMServer {
 	}
 
 	/**
-	 * Initializes listeners that are provided in the settings as separated values.
+	 * Initialization of optionally defined service.
 	 * 
-	 * @param inApplicationProps
-	 *            The application properties.
-	 * @return The listeners.
+	 * @param lApplicationProps The overall application properties.
 	 */
-	private List<MeasureListener> prepareMessageListeners(Properties inApplicationProps) {
+	private void initService(Properties lApplicationProps) {
 
-		List<MeasureListener> outListeners = new ArrayList<>();
-
-		// Recorders
-		String lRecorderClassNames = inApplicationProps.getProperty(CONFIG_PARAM_RECORDERS);
-		String[] lClassNames = StringUtils.split(lRecorderClassNames, " ,;:");
-		if (lClassNames != null) {
-			for (String lCurrRecorderClassName : lClassNames) {
-				try {
-					Class<?> lRecorderClass = Class.forName(lCurrRecorderClassName);
-					Recorder lRecorder = (Recorder) lRecorderClass.newInstance();
-					lRecorder.initialize(extractProperties(inApplicationProps, lRecorder.getId()));
-					outListeners.add(lRecorder);
-				} catch (Throwable t) {
-					throw new IllegalArgumentException(
-							"Recorder [" + lCurrRecorderClassName + "] could not be found or initialized!", t);
-				} // catch
-			} // for
+		typeOfService = ServiceType.WS;
+		String serviceProperty = lApplicationProps.getProperty(CONFIG_KEY_SERVICE);
+		if (StringUtils.contains(serviceProperty, ',')) {
+			throw new IllegalArgumentException(CONFIG_KEY_SERVICE + "=" + serviceProperty
+					+ " - only one service can be started for an instance of HMServer!");
 		} // if
 
-		return outListeners;
+		try {
+			typeOfService = ServiceType.valueOf(serviceProperty);
+		} catch (Throwable t) {
+			StringBuilder lBuilder = new StringBuilder();
+			for (ServiceType lCurrMode : ServiceType.values()) {
+				lBuilder.append(lCurrMode);
+				lBuilder.append(" ");
+			} // for
+			throw new IllegalArgumentException("Service [" + serviceProperty + "] is not supported - use one of: "
+					+ lBuilder.toString().trim().replace(' ', ','));
+		} // catch
+
+		serviceProperties = ConfigHelper.extractProperties(lApplicationProps, typeOfService.name().toLowerCase());
 	}
 
-	private void startWeb() {
+	/**
+	 * Shuts down all devices and finally the service.
+	 */
+	private void shutdown() {
 
-		Javalin lServiceBuilder = Javalin.create();
-		lServiceBuilder.enableStandardRequestLogging();
-		Javalin app = Javalin.start(7000);
-		app.get("/", ctx -> ctx.result(serializeMeasures(ctx)));
+		for (MeasurementDevice lCurrDevice : runningDevices) {
+			lCurrDevice.switchOff();
+		} // for
+
+		service.stopService();
+	}
+
+	/**
+	 * Starts each of the given devices.
+	 * 
+	 * @param inDevices The devices to start.
+	 */
+	private void startDevices(List<MeasurementDevice> inDevices) {
+
+		for (MeasurementDevice lCurrDevice : inDevices) {
+
+			runningDevices.add(lCurrDevice);
+
+			LogHelper.logInfo(this, "Starting device [{0}] ...", lCurrDevice.getId());
+
+			Runnable lRunnableDevice = new RunnableMeasureDeviceSupport(lCurrDevice);
+			Thread lDeviceThread = new Thread(lRunnableDevice, lCurrDevice.getClass().getSimpleName());
+			lDeviceThread.start();
+		} // for
+	}
+
+	/**
+	 * Starts the service that is configured.
+	 */
+	@SuppressWarnings("unchecked")
+	private void startService() {
+
+		try {
+			Class<Service> serviceClass = (Class<Service>) Class.forName(typeOfService.getClassName());
+			Constructor<Service> serviceConstructor = serviceClass.getConstructor(MeasureCache.class, Properties.class);
+			service = serviceConstructor.newInstance(cache, serviceProperties);
+		} catch (Throwable t) {
+			throw new RuntimeException("Web Service konnte nicht gestartet werden!", t);
+		} // catch
+
+		LogHelper.logInfo(this, "Starting service [{0}] ...", typeOfService.name(), service.getClass().getSimpleName());
+
+		service.startService();
+	}
+
+	/**
+	 * Loads the overall configuration, performs general initialization and starts
+	 * devices and the corresponding data service.
+	 * 
+	 * @throws MeasurementDeviceInitializationException In case that a device could
+	 *                                                  not be initialized properly.
+	 */
+	private void startup() throws MeasurementDeviceInitializationException {
+
+		// load configuration
+		Properties lApplicationProps = ConfigHelper.loadConfiguration();
+
+		// perform initialization steps
+		List<MeasurementDevice> lDevices = initDevices(lApplicationProps);
+		initService(lApplicationProps);
+		initSerializers(lApplicationProps);
+		initRecorders(lApplicationProps, lDevices);
+
+		// start data service and devices
+		startService();
+		startDevices(lDevices);
 	}
 }

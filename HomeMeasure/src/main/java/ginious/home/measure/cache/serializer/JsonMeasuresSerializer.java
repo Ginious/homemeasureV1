@@ -58,7 +58,7 @@ final class JsonMeasuresSerializer extends AbstractMeasuresSerializer {
 
 			Measure lCurrMeasure = lMeasures.next();
 			lBuilder.append("    \"");
-			lBuilder.append(lCurrMeasure.getID());
+			lBuilder.append(lCurrMeasure.getId());
 			lBuilder.append("\":\t\"");
 			lBuilder.append(lCurrMeasure.getValue());
 			lBuilder.append("\"");

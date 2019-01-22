@@ -8,7 +8,7 @@ import org.junit.Test;
 import ginious.home.measure.Measure;
 import ginious.home.measure.MeasureFactory;
 import ginious.home.measure.cache.MeasureCache;
-import ginious.home.measure.cache.MeasureCacheFactory;
+import ginious.home.measure.cache.MeasureCacheHelper;
 import ginious.home.measure.device.AbstractMeasurementDevice;
 import ginious.home.measure.device.MeasurementDevice;
 
@@ -20,23 +20,32 @@ public class JsonMeasuresSerializerTest {
 		}
 
 		@Override
-		public void switchOn() {
+		public void switchOnCustom() {
+		}
+
+		@Override
+		protected void initDevice() {
+		}
+
+		@Override
+		protected void switchOffCustom() {
+			
 		}
 	}
 
 	MeasuresSerializer classUnderTest = new JsonMeasuresSerializer();
 
-//	@Test
+	@Test
 	public void testSerialize() {
 
 		MeasurementDevice lDevice1 = new TestDevice("junit-1");
 		MeasurementDevice lDevice2 = new TestDevice("junit-2");
-		MeasureCache lCache = MeasureCacheFactory.createCache(Arrays.asList(lDevice1, lDevice2), new ArrayList<>());
+		MeasureCache lCache = MeasureCacheHelper.createCache(Arrays.asList(lDevice1, lDevice2), new ArrayList<>());
 
-		Measure lMeasure = MeasureFactory.createMeasure("test-1");
+		Measure lMeasure = MeasureFactory.createMeasure(lDevice1, "test-1");
 		lMeasure.setValue("1");
 
-		lMeasure = MeasureFactory.createMeasure("test-1");
+		lMeasure = MeasureFactory.createMeasure(lDevice2, "test-1");
 		lMeasure.setValue("1");
 
 		lCache.getMeasures("junit-1").add(lMeasure);

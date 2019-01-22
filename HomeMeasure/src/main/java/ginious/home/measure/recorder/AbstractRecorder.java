@@ -10,7 +10,11 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
 
 import ginious.home.measure.Measure;
+import ginious.home.measure.util.ConfigHelper;
 
+/**
+ * Base implementation of a recorder providing basic setting initialization.
+ */
 public abstract class AbstractRecorder implements Recorder {
 
 	private static final String INCLUSION_MEASURES = "INCLUSION_MEASURES";
@@ -19,10 +23,18 @@ public abstract class AbstractRecorder implements Recorder {
 
 	private Map<String, List<String>> measuresToInclude = new HashMap<>();
 
-	protected AbstractRecorder(String inId) {
+	/**
+	 * Default recorder constructor.
+	 * 
+	 * @param inId         The id of the recorder.
+	 * @param inProperties The recorder properties as defined in hmserver ini.
+	 */
+	protected AbstractRecorder(String inId, Properties inProperties) {
 		super();
 
 		id = inId;
+
+		init(ConfigHelper.extractProperties(inProperties, inId));
 	}
 
 	@Override
@@ -30,8 +42,29 @@ public abstract class AbstractRecorder implements Recorder {
 		return id;
 	}
 
-	@Override
-	public final void initialize(Properties inProps) {
+	/**
+	 * Gets the value of a property from the underlying configuration.
+	 * 
+	 * @param inProps       The set of properties.
+	 * @param inPropName    The name of the property to get.
+	 * @param inIsMandatory Defines whether the property is required or not.
+	 * @return The property value.
+	 */
+	protected final String getProperty(Properties inProps, String inPropName, boolean inIsMandatory) {
+
+		String outProperty = inProps.getProperty(inPropName);
+		Validate.isTrue(inIsMandatory && StringUtils.isNotBlank(outProperty),
+				"Property [" + getId() + "." + inPropName + "] is not provided!");
+
+		return outProperty;
+	}
+
+	/**
+	 * Performs the initialization based on the given application properties.
+	 * 
+	 * @param inProps The application properties.
+	 */
+	private void init(Properties inProps) {
 
 		String lInclusionMeasures = (String) inProps.get(INCLUSION_MEASURES);
 		String[] lDeviceMeasuresToInclude = StringUtils.split(lInclusionMeasures, ",;");
@@ -51,13 +84,25 @@ public abstract class AbstractRecorder implements Recorder {
 			} // for
 		} // if
 
-		initializeCustom(inProps);
+		initialize(inProps);
 	}
 
-	protected abstract void initializeCustom(Properties inProps);
-
+	/**
+	 * Overwrite in case specific initialization is required.
+	 */
 	@Override
-	public void measureChanged(String inDeviceId, Measure inChangedMeasure) {
+	public void initialize(Properties inProperties) {
+
+	}
+
+	/**
+	 * This callback will be called for each measure of which the value changed. The
+	 * call will be delegated to the subclass implementation
+	 * <code>measureChangedCustom</code> as long as the measure was not explicitly
+	 * excluded.
+	 */
+	@Override
+	public void measureChanged(Measure inChangedMeasure) {
 
 		// skip empty measures from recording
 		if (inChangedMeasure.getValue() == null || "null".equalsIgnoreCase(inChangedMeasure.getValue())) {
@@ -68,32 +113,35 @@ public abstract class AbstractRecorder implements Recorder {
 		// (1) no measure is specifically included
 		// (2) measure is specifically included
 		// (3) all measures of a device are included
-		List<String> lMeasureIds = measuresToInclude.get(inDeviceId);
+		List<String> lMeasureIds = measuresToInclude.get(inChangedMeasure.getDeviceId());
 		if (lMeasureIds == null || //
 				lMeasureIds.isEmpty() || //
-				lMeasureIds.contains(inChangedMeasure.getID()) || //
+				lMeasureIds.contains(inChangedMeasure.getId()) || //
 				lMeasureIds.contains("*")) {
-			measureChangedCustom(inDeviceId, inChangedMeasure);
+			measureChangedCustom(inChangedMeasure);
 		} // if
 	}
 
-	protected abstract void measureChangedCustom(String inDeviceId, Measure inChangedMeasure);
+	/**
+	 * This callback will be called for measures that are explicitly not excluded.
+	 * 
+	 * @param inChangedMeasure The measure that has changed.
+	 */
+	protected abstract void measureChangedCustom(Measure inChangedMeasure);
 
+	/**
+	 * Overwrite in case specific functionality is required for starting.
+	 */
 	@Override
 	public final void startRecording() {
-		startRecordingCustom();
-	}
-
-	protected void startRecordingCustom() {
 
 	}
 
+	/**
+	 * Overwrite in case specific functionality is required for stopping.
+	 */
 	@Override
 	public final void stopRecording() {
-		stopRecordingCustom();
-	}
-
-	protected void stopRecordingCustom() {
 
 	}
 }

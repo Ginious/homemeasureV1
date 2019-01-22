@@ -8,18 +8,24 @@ import org.apache.commons.lang.Validate;
 
 import ginious.home.measure.Measure;
 
-class MeasureCacheAdapterImpl implements MeasureCacheAdapter {
+/**
+ * Default cache adapter implementation.
+ */
+final class MeasureCacheAdapterImpl implements MeasureCacheAdapter {
 
+	/**
+	 * The underlying listeners.
+	 */
 	private List<MeasureListener> measureListeners = new ArrayList<>();
 
+	/**
+	 * 
+	 */
 	private List<Measure> measures;
 
-	private String deviceId;
-
-	protected MeasureCacheAdapterImpl(String inDeviceId, List<Measure> inMeasures) {
+	protected MeasureCacheAdapterImpl(List<Measure> inMeasures) {
 		super();
 
-		deviceId = inDeviceId;
 		measures = inMeasures;
 	}
 
@@ -34,13 +40,13 @@ class MeasureCacheAdapterImpl implements MeasureCacheAdapter {
 		boolean lValueSet = false;
 
 		for (Measure lCurrMeasure : measures) {
-			if (StringUtils.equals(lCurrMeasure.getID(), inId)) {
+			if (StringUtils.equals(lCurrMeasure.getId(), inId)) {
 				String lOldValue = lCurrMeasure.getValue();
 				lCurrMeasure.setValue(inValue);
 				lValueSet = true;
 
 				if (!StringUtils.equals(lOldValue, inValue)) {
-					measureListeners.forEach(l -> l.measureChanged(deviceId, lCurrMeasure));
+					measureListeners.forEach(l -> l.measureChanged(lCurrMeasure));
 				} // if
 			} // if
 		} // for

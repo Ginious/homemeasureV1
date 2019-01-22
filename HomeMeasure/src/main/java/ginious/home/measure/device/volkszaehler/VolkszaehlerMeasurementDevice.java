@@ -20,6 +20,7 @@ import org.openmuc.jsml.structures.responses.SmlGetListRes;
 import org.openmuc.jsml.transport.SerialReceiver;
 
 import ginious.home.measure.device.AbstractMeasurementDevice;
+import ginious.home.measure.util.LogHelper;
 
 /**
  * Measure device witch is capable of gathering measure data from a volkszaehler
@@ -68,15 +69,19 @@ public final class VolkszaehlerMeasurementDevice extends AbstractMeasurementDevi
 		}
 	}
 
+	/**
+	 * The serial receiver for receiving data from the USB device.
+	 */
 	private SerialReceiver receiver;
 
+	/**
+	 * Default constructor.
+	 */
 	public VolkszaehlerMeasurementDevice() {
 		super("volkszaehler");
-
-		init();
 	}
 
-	private void init() {
+	protected void initDevice() {
 
 		// register all mesaures provided by SMA converter
 		for (Measure lCurrMeasure : Measure.values()) {
@@ -90,9 +95,12 @@ public final class VolkszaehlerMeasurementDevice extends AbstractMeasurementDevi
 	}
 
 	@Override
-	public void switchOn() {
+	protected void switchOffCustom() {
 
-		SerialReceiver lReceiver = getReceiver();
+	}
+
+	@Override
+	protected void switchOnCustom() {
 
 		Map<String, Measure> lMeasuresByObjName = new HashMap<>();
 		lMeasuresByObjName.put(getSettingAsText(Setting.METER_HT.name(), Setting.METER_HT.defaultValue), Measure.HT);
@@ -106,10 +114,12 @@ public final class VolkszaehlerMeasurementDevice extends AbstractMeasurementDevi
 
 		for (;;) {
 
+			SerialReceiver lReceiver = getReceiver();
+
 			// quit when device was switched off
 			if (wasSwitchedOff()) {
 				try {
-					lReceiver.closeStream();
+					lReceiver.close();
 				} catch (IOException e) {
 					// ignore
 				} // catch
@@ -119,7 +129,9 @@ public final class VolkszaehlerMeasurementDevice extends AbstractMeasurementDevi
 			// read next data bucket
 			SmlFile lSmlFile = null;
 			try {
-				lSmlFile = lReceiver.getSMLFile();
+				if (lReceiver != null) {
+					lSmlFile = lReceiver.getSMLFile();
+				} // if
 			} catch (IOException e) {
 				continue;
 			} // catch
@@ -162,11 +174,23 @@ public final class VolkszaehlerMeasurementDevice extends AbstractMeasurementDevi
 						.setFlowControl(FlowControl.RTS_CTS).build();
 
 				receiver = new SerialReceiver(lPort);
-			} catch (IOException e) {
-				throw new RuntimeException("Could not initiate communication with volkszaehler USB dongle!", e);
+			} catch (UnsatisfiedLinkError e) {
+				LogHelper.logError(getId(), "Failed loading device driver - reason: {0}", e.getMessage());
+			} catch (Throwable t) {
+				LogHelper.logError(getId(),
+						"Failed to initiate communication with volkszaehler USB dongle - reason: {0}", t.getMessage());
 			} // catch
 		} // if
 
 		return receiver;
+	}
+
+	/**
+	 * Setter for test purpose.
+	 * 
+	 * @param inReceiver The test receiver mock.
+	 */
+	protected void setReceiver(SerialReceiver inReceiver) {
+		receiver = inReceiver;
 	}
 }

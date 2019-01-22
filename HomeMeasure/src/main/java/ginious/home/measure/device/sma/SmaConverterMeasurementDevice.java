@@ -6,45 +6,23 @@ import de.re.easymodbus.exceptions.ModbusException;
 import de.re.easymodbus.modbusclient.ModbusClient;
 import de.re.easymodbus.modbusclient.ModbusClient.RegisterOrder;
 import ginious.home.measure.device.AbstractMeasurementDevice;
+import ginious.home.measure.util.LogHelper;
 
 public final class SmaConverterMeasurementDevice extends AbstractMeasurementDevice {
-
-	private int REQUEST_INTERVAL_MS = 10_000; // 10 seconds
-	private int INTERVAL_DAY_WH = 6; // 1 minute
-	private int INTERVAL_TOTAL_KWH = 30; // 5 minutes
-
-	/**
-	 * Parameters that can optionally be passed when calling the server including
-	 * default values when not provided.
-	 */
-	private enum Setting {
-
-		ID("3"), //
-		IP("192.168.2.51"), //
-		PORT("502"), //
-		TIMEOUT("60000"), //
-		SALESPERKWH("0.11");
-
-		private String defaultValue;
-
-		private Setting(String inDefaultValue) {
-			defaultValue = inDefaultValue;
-		}
-
-		private String getDefaultValue() {
-			return defaultValue;
-		}
-	}
 
 	/**
 	 * Modbus data types.
 	 */
 	public enum DataType {
-		S32, //
-		U32, //
-		U64;
+	S32, //
+	U32, //
+	U64;
 	}
 
+	/**
+	 * Existing measures including addressing information and refresh interval in
+	 * milliseconds.
+	 */
 	public enum Measure {
 
 		CURRENT_W("Current_W", 30775, 2, DataType.S32, 10_000), // 10 Sekunden
@@ -72,13 +50,128 @@ public final class SmaConverterMeasurementDevice extends AbstractMeasurementDevi
 		}
 	}
 
-	public SmaConverterMeasurementDevice() {
-		super("sma_converter");
+	/**
+	 * Parameters that can optionally be passed when calling the server including
+	 * default values when not provided.
+	 */
+	private enum Setting {
 
-		init();
+		ID("3"), //
+		IP("192.168.2.51"), //
+		PORT("502"), //
+		TIMEOUT("60000"), //
+		SALESPERKWH("0.11");
+
+		private String defaultValue;
+
+		private Setting(String inDefaultValue) {
+			defaultValue = inDefaultValue;
+		}
+
+		private String getDefaultValue() {
+			return defaultValue;
+		}
 	}
 
-	private void init() {
+	private int REQUEST_INTERVAL_MS = 10_000; // 10 seconds
+
+	private int INTERVAL_DAY_WH = 6; // 1 minute
+
+	private int INTERVAL_TOTAL_KWH = 30; // 5 minutes
+
+	private ModbusClient testClient;
+
+	public SmaConverterMeasurementDevice() {
+		super("sma_converter");
+	}
+
+	/**
+	 * Connects to the SMA converter.
+	 * 
+	 * @return The client used to communicate with the SMA converter.
+	 */
+	private ModbusClient connect() {
+
+		ModbusClient outClient = createModbusClient();
+
+		String lIpAddress = getSettingAsText(Setting.IP.name(), Setting.IP.defaultValue);
+		int lPort = getSettingAsInteger(Setting.PORT.name(), Setting.PORT.defaultValue);
+
+		try {
+			outClient.Connect(lIpAddress, lPort);
+		} catch (Throwable t) {
+			LogHelper.logError(this, "Modbus connection to [{0}:{1}] failed - reason: {2}", lIpAddress, lPort,
+					t.getMessage());
+			return null;
+		} // catch
+
+		outClient.setConnectionTimeout(getSettingAsInteger(Setting.TIMEOUT.name(), Setting.TIMEOUT.defaultValue));
+		int lModbusID = getSettingAsInteger(Setting.ID.name(), Setting.ID.defaultValue);
+		outClient.setUnitIdentifier((byte) Byte.valueOf((byte) lModbusID));
+
+		LogHelper.logInfo(this, "SMA converter [ID={0}] successfully connected: ip={1}, port={2}", lModbusID,
+				lIpAddress, lPort);
+
+		return outClient;
+	}
+
+	/**
+	 * Creates a new Modbus Client or returns the mocked test client.
+	 * 
+	 * @return A new Modbus Client or the mocked test client.
+	 */
+	private ModbusClient createModbusClient() {
+
+		ModbusClient outClient;
+
+		if (testClient == null) {
+			outClient = new ModbusClient();
+		} else {
+			outClient = testClient;
+		} // else
+
+		return outClient;
+	}
+
+	private String getValueFromSMA(Measure inValueId) {
+
+		String outValue = "0";
+
+		ModbusClient lClient = null;
+		int[] lRegisters = null;
+		try {
+			lClient = connect();
+			if (lClient != null) {
+				lRegisters = lClient.ReadHoldingRegisters(inValueId.start, inValueId.length);
+			}
+		} catch (ModbusException | IOException e) {
+			return outValue;
+		} finally {
+			if (lClient != null) {
+				try {
+					lClient.Disconnect();
+				} catch (IOException e) {
+					// ignore
+				} // catch
+			} // if
+		} // finally
+
+		if (lRegisters != null) {
+
+			// decode register bytes
+			if (inValueId.type == DataType.S32) {
+				outValue = String.valueOf(ModbusClient.ConvertRegistersToDouble(lRegisters, RegisterOrder.HighLow));
+			} else if (inValueId.type == DataType.U32) {
+				outValue = String.valueOf(ModbusClient.ConvertRegistersToDouble(lRegisters, RegisterOrder.HighLow));
+			} else if (inValueId.type == DataType.U64) {
+				outValue = String.valueOf(ModbusClient.ConvertRegistersToLong(lRegisters, RegisterOrder.HighLow));
+			} // else if
+		} // if
+
+		return outValue;
+	}
+
+	protected void initDevice() {
 
 		// register all mesaures provided by SMA converter
 		for (Measure lCurrMeasure : Measure.values()) {
@@ -91,8 +184,22 @@ public final class SmaConverterMeasurementDevice extends AbstractMeasurementDevi
 		} // for
 	}
 
+	/**
+	 * Setter for test purpose.
+	 * 
+	 * @param inMockClient The modbus client mock for testing.
+	 */
+	protected void setModbusClient(ModbusClient inMockClient) {
+		testClient = inMockClient;
+	}
+
 	@Override
-	public void switchOn() {
+	protected void switchOffCustom() {
+		
+	}
+	
+	@Override
+	protected void switchOnCustom() {
 
 		// determine sales per KWh
 		Float lSalesPerKWh = Float
@@ -144,69 +251,5 @@ public final class SmaConverterMeasurementDevice extends AbstractMeasurementDevi
 
 			lIntervalCounter++;
 		} // for
-	}
-
-	/**
-	 * Connects to the SMA converter.
-	 * 
-	 * @return The client used to communicate with the SMA converter.
-	 */
-	private ModbusClient connectToConverter() {
-
-		ModbusClient outClient = null;
-
-		String lIpAddress = getSettingAsText(Setting.IP.name(), Setting.IP.defaultValue);
-		int lPort = getSettingAsInteger(Setting.PORT.name(), Setting.PORT.defaultValue);
-
-		outClient = new ModbusClient();
-		try {
-			outClient.Connect(lIpAddress, lPort);
-		} catch (Throwable t) {
-			throw new RuntimeException("Modbus connection to [" + lIpAddress + ":" + lPort + "] failed!", t);
-		} // catch
-
-		outClient.setConnectionTimeout(getSettingAsInteger(Setting.TIMEOUT.name(), Setting.TIMEOUT.defaultValue));
-		int lModbusID = getSettingAsInteger(Setting.ID.name(), Setting.ID.defaultValue);
-		outClient.setUnitIdentifier((byte) Byte.valueOf((byte) lModbusID));
-
-		logInfo("SMA converter [ID=" + lModbusID + "] successfully connected: " + lIpAddress + ":" + lPort);
-
-		return outClient;
-	}
-
-	private String getValueFromSMA(Measure inValueId) {
-
-		String outValue = "0";
-
-		ModbusClient lClient = null;
-		int[] lRegisters = null;
-		try {
-			lClient = connectToConverter();
-			lRegisters = lClient.ReadHoldingRegisters(inValueId.start, inValueId.length);
-		} catch (ModbusException | IOException e) {
-			return outValue;
-		} finally {
-			if (lClient != null) {
-				try {
-					lClient.Disconnect();
-				} catch (IOException e) {
-					// ignore
-				} // catch
-			} // if
-		} // finally
-
-		if (lRegisters != null) {
-
-			// decode register bytes
-			if (inValueId.type == DataType.S32) {
-				outValue = String.valueOf(ModbusClient.ConvertRegistersToDouble(lRegisters, RegisterOrder.HighLow));
-			} else if (inValueId.type == DataType.U32) {
-				outValue = String.valueOf(ModbusClient.ConvertRegistersToDouble(lRegisters, RegisterOrder.HighLow));
-			} else if (inValueId.type == DataType.U64) {
-				outValue = String.valueOf(ModbusClient.ConvertRegistersToLong(lRegisters, RegisterOrder.HighLow));
-			} // else if
-		} // if
-
-		return outValue;
 	}
 }

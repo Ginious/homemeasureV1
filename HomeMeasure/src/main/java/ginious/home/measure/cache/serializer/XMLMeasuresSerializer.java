@@ -48,7 +48,7 @@ final class XMLMeasuresSerializer extends AbstractMeasuresSerializer {
 
 			lBuilder.append("\t\t\t<measure>\n");
 			lBuilder.append("\t\t\t\t<id>");
-			lBuilder.append(lCurrMeasure.getID());
+			lBuilder.append(lCurrMeasure.getId());
 			lBuilder.append("</id>\n");
 			lBuilder.append("\t\t\t\t<value>");
 			lBuilder.append(lCurrMeasure.getValue());
