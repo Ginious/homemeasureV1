@@ -96,7 +96,7 @@ public final class HMServer {
 	/**
 	 * Default application constructor.
 	 */
-	private HMServer() {
+	public HMServer() {
 		super();
 	}
 
@@ -285,9 +285,9 @@ public final class HMServer {
 	 * devices and the corresponding data service.
 	 * 
 	 * @throws MeasurementDeviceInitializationException In case that a device could
-	 *                                                  not be initialized properly.
+	 *                                                   not be initialized properly.
 	 */
-	private void startup() throws MeasurementDeviceInitializationException {
+	public void startup() throws MeasurementDeviceInitializationException {
 
 		// load configuration
 		Properties lApplicationProps = ConfigHelper.loadConfiguration();

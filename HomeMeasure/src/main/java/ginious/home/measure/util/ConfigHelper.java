@@ -1,14 +1,16 @@
 package ginious.home.measure.util;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
 import org.apache.commons.lang.math.NumberUtils;
+
+import ginious.home.measure.util.ConfigSource.LocationType;
 
 /**
  * Helper for common configuration tasks.
@@ -108,46 +110,41 @@ public final class ConfigHelper {
 
 		Properties outProperties = new Properties();
 
-		String lSourceLocation = "classpath://" + CONFIG_FILE_NAME;
+		// create list with config file locations in order of lookup
+		List<ConfigSource> lConfigSources = new ArrayList<>();
+		lConfigSources.add(new ConfigSource(LocationType.WorkingDirectory, new File(CONFIG_FILE_NAME)));
+		lConfigSources.add(new ConfigSource(LocationType.Classpath, "classpath://" + CONFIG_FILE_NAME,
+				ConfigHelper.class.getResourceAsStream("/" + CONFIG_FILE_NAME)));
+		lConfigSources.add(new ConfigSource(LocationType.UserHome, new File(CONFIG_USER_HOME, "." + CONFIG_FILE_NAME)));
+		lConfigSources.add(new ConfigSource(LocationType.ConfDirectory, new File(CONFIG_CONF, CONFIG_FILE_NAME)));
+		lConfigSources.add(new ConfigSource(LocationType.EtcDirectory, new File(CONFIG_ETC, CONFIG_FILE_NAME)));
+
+		// determine first file being available
+		ConfigSource lConfigSourceToUse = null;
+		for (ConfigSource currIniFile : lConfigSources) {
+
+			if (currIniFile.isAvailable()) {
+				lConfigSourceToUse = currIniFile;
+				break;
+			} else {
+				LogHelper.logInfo(ConfigHelper.class, "Tried {0}: {1}", currIniFile.getLocationType().name(),
+						currIniFile.getPath());
+			} // else
+		} // for
+
+		// report missing configuration file
+		if (lConfigSourceToUse == null) {
+			throw new IllegalArgumentException("Config file could not be found in any of the above locations!");
+		} // if
+
+		// report and load configuration
+		LogHelper.logInfo(ConfigHelper.class, "Loading configuration from [{0}]: {1}",
+				lConfigSourceToUse.getLocationType().name(), lConfigSourceToUse.getPath());
 		try {
-			InputStream lConfigInputStream = ConfigHelper.class.getResourceAsStream("/" + CONFIG_FILE_NAME);
-			if (lConfigInputStream == null) {
-
-				// check all possible file locations
-				File lConfigFile_1_user_home = new File(CONFIG_USER_HOME, "." + CONFIG_FILE_NAME);
-				File lConfigFile_2_conf = new File(CONFIG_CONF, CONFIG_FILE_NAME);
-				File lConfigFile_3_etc = new File(CONFIG_ETC, CONFIG_FILE_NAME);
-
-				if (lConfigFile_1_user_home.exists()) {
-
-					// (1) load absolute from ".hmserver.ini" in user home directory
-					lConfigInputStream = new FileInputStream(lConfigFile_1_user_home);
-					lSourceLocation = lConfigFile_1_user_home.getAbsolutePath();
-				} else if (lConfigFile_2_conf.exists()) {
-
-					// (2) load relative from "conf/hmserver.ini" where application was started
-					lConfigInputStream = new FileInputStream(lConfigFile_2_conf);
-					lSourceLocation = lConfigFile_2_conf.getAbsolutePath();
-				} else if (lConfigFile_3_etc.exists()) {
-
-					// (3) load absolute from "/etc/hmserver.ini"
-					lConfigInputStream = new FileInputStream(lConfigFile_3_etc);
-					lSourceLocation = lConfigFile_3_etc.getAbsolutePath();
-				} else {
-
-					throw new IllegalArgumentException("Config file could not be found - tried in following order: " //
-							+ "\n\t1. classpath://" + CONFIG_FILE_NAME //
-							+ "\n\t2. " + lConfigFile_1_user_home.getAbsolutePath() //
-							+ "\n\t3. " + lConfigFile_2_conf.getAbsolutePath() //
-							+ "\n\t4. " + lConfigFile_3_etc.getAbsolutePath());
-				} // if
-			} // if
-
-			LogHelper.logInfo(ConfigHelper.class, "Loading configuration from [{0}] ...", lSourceLocation);
-
-			outProperties.load(lConfigInputStream);
+			outProperties.load(lConfigSourceToUse.getInputStream());
 		} catch (IOException e) {
-			throw new RuntimeException("Properties could not be loaded from file [" + lSourceLocation + "]!");
+			throw new RuntimeException(
+					"Properties could not be loaded from file [" + lConfigSourceToUse.getPath() + "]!");
 		} // catch
 
 		return outProperties;
