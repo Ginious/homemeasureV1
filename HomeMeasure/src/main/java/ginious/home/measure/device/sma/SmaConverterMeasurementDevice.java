@@ -109,8 +109,15 @@ public final class SmaConverterMeasurementDevice extends AbstractMeasurementDevi
 		int lModbusID = getSettingAsInteger(Setting.ID.name(), Setting.ID.defaultValue);
 		outClient.setUnitIdentifier((byte) Byte.valueOf((byte) lModbusID));
 
-		LogHelper.logInfo(this, "SMA converter [ID={0}] successfully connected: ip={1}, port={2}", lModbusID,
-				lIpAddress, lPort);
+		if (outClient.isConnected()) {
+			LogHelper.logInfo(this, "SMA converter [ID={0}] successfully connected: ip={1}, port={2}", lModbusID,
+					lIpAddress, lPort);
+		} else {
+			LogHelper.logWarning(this,
+					"SMA converter [ID={0}] could not be connected: ip={1}, port={2} - unknown reason", lModbusID,
+					lIpAddress, lPort);
+			outClient = null;
+		} // else
 
 		return outClient;
 	}
@@ -195,9 +202,9 @@ public final class SmaConverterMeasurementDevice extends AbstractMeasurementDevi
 
 	@Override
 	protected void switchOffCustom() {
-		
+
 	}
-	
+
 	@Override
 	protected void switchOnCustom() {
 
@@ -216,7 +223,7 @@ public final class SmaConverterMeasurementDevice extends AbstractMeasurementDevi
 				break;
 			} // if
 
-			if ((lDeviceJustStarted && lIntervalCounter == 0) || lIntervalCounter == INTERVAL_DAY_WH) {
+			if (lDeviceJustStarted || lIntervalCounter == INTERVAL_DAY_WH) {
 
 				// Day Wh
 				Integer lDayWh = Integer.valueOf(getValueFromSMA(Measure.DAY_WH));
@@ -225,7 +232,9 @@ public final class SmaConverterMeasurementDevice extends AbstractMeasurementDevi
 				// Daily Sales
 				Float lSalesPerDay = (float) lDayWh / 1000 * lSalesPerKWh;
 				setMeasureValue(Measure.DAY_SALE.id, String.valueOf(lSalesPerDay));
-			} else if ((lDeviceJustStarted && lIntervalCounter == 1) || lIntervalCounter == INTERVAL_TOTAL_KWH) {
+			} // if
+
+			if (lDeviceJustStarted || lIntervalCounter == INTERVAL_TOTAL_KWH) {
 
 				// Total MWh
 				Integer lTotalKWh = Integer.valueOf(getValueFromSMA(Measure.TOTAL_KWH));
@@ -235,21 +244,20 @@ public final class SmaConverterMeasurementDevice extends AbstractMeasurementDevi
 				Float lSalesTotal = (float) lTotalKWh * lSalesPerKWh;
 				setMeasureValue(Measure.TOTAL_SALE.id, String.valueOf(lSalesTotal));
 
-				lDeviceJustStarted = false;
 				lIntervalCounter = 0;
-			} else {
+			} // if
 
-				// Current Wh
-				Integer lCurrentW = Integer.valueOf(getValueFromSMA(Measure.CURRENT_W));
-				if (lCurrentW < 0) {
-					lCurrentW = 0;
-				} // if
-				setMeasureValue(Measure.CURRENT_W.id, String.valueOf(lCurrentW));
-			} // else
+			// Current Wh
+			Integer lCurrentW = Integer.valueOf(getValueFromSMA(Measure.CURRENT_W));
+			if (lCurrentW < 0) {
+				lCurrentW = 0;
+			} // if
+			setMeasureValue(Measure.CURRENT_W.id, String.valueOf(lCurrentW));
 
 			sleep(REQUEST_INTERVAL_MS);
 
 			lIntervalCounter++;
+			lDeviceJustStarted = false;
 		} // for
 	}
 }
