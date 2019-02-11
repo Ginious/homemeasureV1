@@ -84,14 +84,15 @@ public final class HMServer {
 	private Service service;
 
 	/**
-	 * The properties of the configured service.
-	 */
-	private Properties serviceProperties;
-
-	/**
 	 * The type of the underlying service.
 	 */
 	private ServiceType typeOfService;
+
+	/**
+	 * All listeners that will finally be attached to the measure cache (i.e.
+	 * Recorders, MQTT service).
+	 */
+	private List<MeasureListener> listeners = new ArrayList<>();
 
 	/**
 	 * Default application constructor.
@@ -164,8 +165,6 @@ public final class HMServer {
 	 */
 	private void initRecorders(Properties inApplicationProps, List<MeasurementDevice> aDeviceList) {
 
-		List<MeasureListener> lListeners = new ArrayList<>();
-
 		// Recorders
 		String lRecorderClassNames = inApplicationProps.getProperty(CONFIG_KEY_RECORDERS);
 		String[] lClassNames = StringUtils.split(lRecorderClassNames, " ,;:");
@@ -175,7 +174,7 @@ public final class HMServer {
 					Class<?> lRecorderClass = Class.forName(lCurrRecorderClassName);
 					Constructor<?> lConstr = lRecorderClass.getConstructor(Properties.class);
 					Recorder lRecorder = (Recorder) lConstr.newInstance(inApplicationProps);
-					lListeners.add(lRecorder);
+					listeners.add(lRecorder);
 				} catch (Throwable t) {
 					LogHelper.logError(this, t, "Failed to create logger!");
 					throw new IllegalArgumentException(
@@ -183,8 +182,6 @@ public final class HMServer {
 				} // catch
 			} // for
 		} // if
-
-		cache = MeasureCacheHelper.createCache(aDeviceList, lListeners);
 	}
 
 	/**
@@ -202,12 +199,14 @@ public final class HMServer {
 	}
 
 	/**
-	 * Initialization of optionally defined service.
+	 * Initialization and instantiation of defined service based on underling properties.
 	 * 
 	 * @param lApplicationProps The overall application properties.
 	 */
+	@SuppressWarnings("unchecked")
 	private void initService(Properties lApplicationProps) {
 
+		// get desired service ID from hmserver.ini and ensure that only one was defined
 		typeOfService = ServiceType.WS;
 		String serviceProperty = lApplicationProps.getProperty(CONFIG_KEY_SERVICE);
 		if (StringUtils.contains(serviceProperty, ',')) {
@@ -215,6 +214,7 @@ public final class HMServer {
 					+ " - only one service can be started for an instance of HMServer!");
 		} // if
 
+		// ensure that defined service exists
 		try {
 			typeOfService = ServiceType.valueOf(serviceProperty);
 		} catch (Throwable t) {
@@ -227,7 +227,22 @@ public final class HMServer {
 					+ lBuilder.toString().trim().replace(' ', ','));
 		} // catch
 
-		serviceProperties = ConfigHelper.extractProperties(lApplicationProps, typeOfService.name().toLowerCase());
+		// load service class and instantiate service
+		try {
+			Class<Service> serviceClass = (Class<Service>) Class.forName(typeOfService.getClassName());
+			Constructor<Service> serviceConstructor = serviceClass.getConstructor(Properties.class);
+			Properties lProperties = ConfigHelper.extractProperties(lApplicationProps,
+					typeOfService.name().toLowerCase());
+			service = serviceConstructor.newInstance(lProperties);
+		} catch (Throwable t) {
+			throw new RuntimeException("Web Service konnte nicht gestartet werden!", t);
+		} // catch
+		
+		// some services require themselves to act as listener for measurements
+		// all listeners will finally be attached to the central measure cache
+		if (MeasureListener.class.isAssignableFrom(service.getClass())) {
+			listeners.add((MeasureListener) service);
+		} // if
 	}
 
 	/**
@@ -264,19 +279,11 @@ public final class HMServer {
 	/**
 	 * Starts the service that is configured.
 	 */
-	@SuppressWarnings("unchecked")
 	private void startService() {
 
-		try {
-			Class<Service> serviceClass = (Class<Service>) Class.forName(typeOfService.getClassName());
-			Constructor<Service> serviceConstructor = serviceClass.getConstructor(MeasureCache.class, Properties.class);
-			service = serviceConstructor.newInstance(cache, serviceProperties);
-		} catch (Throwable t) {
-			throw new RuntimeException("Web Service konnte nicht gestartet werden!", t);
-		} // catch
-
 		LogHelper.logInfo(this, "Starting service [{0}] ...", typeOfService.name(), service.getClass().getSimpleName());
-
+		
+		service.setMeasureCache(cache);
 		service.startService();
 	}
 
@@ -298,8 +305,11 @@ public final class HMServer {
 		initSerializers(lApplicationProps);
 		initRecorders(lApplicationProps, lDevices);
 
+		// create central cache for measures
+		cache = MeasureCacheHelper.createCache(lDevices, listeners);
+
 		// start data service and devices
-		startService();
 		startDevices(lDevices);
+		startService();
 	}
 }

@@ -34,18 +34,20 @@ public class WebService implements Service {
 	/**
 	 * Default constructor.
 	 * 
-	 * @param inMCache       The cache about to be published by this web service.
 	 * @param inServiceProps The properties for this service.
 	 */
-	public WebService(MeasureCache inMCache, Properties inServiceProps) {
+	public WebService(Properties inServiceProps) {
 		super();
-
-		mCache = inMCache;
 
 		port = ConfigHelper.getNumberProperty(inServiceProps, CONFIG_PARAM_PORT, 7000);
 		path = ConfigHelper.getTextProperty(inServiceProps, CONFIG_PARAM_PATH, "/");
 	}
 
+	@Override
+	public void setMeasureCache(MeasureCache inMCache) {
+		mCache = inMCache;
+	}
+	
 	/**
 	 * Starts the web service.
 	 */
