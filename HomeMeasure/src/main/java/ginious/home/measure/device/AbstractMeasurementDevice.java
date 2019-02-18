@@ -1,5 +1,6 @@
 package ginious.home.measure.device;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -41,14 +42,14 @@ public abstract class AbstractMeasurementDevice implements MeasurementDevice {
 
 		Validate.isTrue(StringUtils.isNotBlank(inId), "inId is required!");
 		id = inId.toLowerCase();
-
-		initDevice();
 	}
 
 	/**
 	 * Device-specific initialization of measures and device settings.
 	 */
-	protected abstract void initDevice();
+	public void initDevice() {
+		
+	}
 
 	@Override
 	public final String getId() {
@@ -111,8 +112,10 @@ public abstract class AbstractMeasurementDevice implements MeasurementDevice {
 
 		Validate.isTrue(configuration != null, "Configuration not yet initialized!");
 		Validate.isTrue(StringUtils.isNotBlank(inSettingId), "aSettingId ist required!");
-		Validate.isTrue(configuration.containsKey(inSettingId.toUpperCase()),
-				"Setting [" + inSettingId + "] does not exist!");
+		if (inDefault == null) {
+			Validate.isTrue(configuration.containsKey(inSettingId.toUpperCase()),
+					"Setting [" + inSettingId + "] does not exist!");
+		} // if
 
 		String outSetting = configuration.get(inSettingId);
 		if (outSetting == null) {
@@ -226,5 +229,14 @@ public abstract class AbstractMeasurementDevice implements MeasurementDevice {
 	 */
 	private boolean isDemoMode() {
 		return Boolean.valueOf(getSettingAsText(CONFIG_DEMO_MODE, Boolean.FALSE.toString()));
+	}
+
+	/**
+	 * Gets an unmodifiable view of the underlying configuration.
+	 * 
+	 * @return The unmodifiable configuration.
+	 */
+	protected final Map<String, String> getConfiguration() {
+		return Collections.unmodifiableMap(configuration);
 	}
 }
