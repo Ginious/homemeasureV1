@@ -6,6 +6,8 @@ import ginious.home.measure.cache.MeasureCacheAdapter;
 
 public interface MeasurementDevice {
 
+	void initDevice();
+	
 	String getId();
 	
 	void switchOn();
