@@ -76,12 +76,14 @@ public final class VolkszaehlerMeasurementDevice extends AbstractMeasurementDevi
 
 	/**
 	 * Default constructor.
+	 * 
+	 * @param inId The id of this device.
 	 */
-	public VolkszaehlerMeasurementDevice() {
-		super("volkszaehler");
+	public VolkszaehlerMeasurementDevice(String inId) {
+		super(inId);
 	}
 
-	protected void initDevice() {
+	public void initDevice() {
 
 		// register all mesaures provided by SMA converter
 		for (Measure lCurrMeasure : Measure.values()) {

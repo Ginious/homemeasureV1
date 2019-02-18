@@ -19,7 +19,7 @@ public class TestVolkszaehlerMeasurementDevice implements MeasurementDevice {
 	public TestVolkszaehlerMeasurementDevice() {
 		super();
 
-		device = new VolkszaehlerMeasurementDevice();
+		device = new VolkszaehlerMeasurementDevice("test");
 	}
 
 	@Override
@@ -54,5 +54,10 @@ public class TestVolkszaehlerMeasurementDevice implements MeasurementDevice {
 	
 	void setReceiver(SerialReceiver inReceiver) {
 		device.setReceiver(inReceiver);
+	}
+
+	@Override
+	public void initDevice() {
+		
 	}
 }
