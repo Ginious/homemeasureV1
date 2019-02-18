@@ -2,6 +2,7 @@ package ginious.home.measure.server.service;
 
 import java.util.Properties;
 
+import org.apache.commons.lang.StringUtils;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttException;
@@ -20,10 +21,10 @@ public final class MqttPublisherService implements Service, MeasureListener {
 	private static final String TOPIC_PATH_SEPARATOR = "/";
 	private static final String DEFAULT_TOPIC_ROOT = "homemeasure/";
 
-	private static final String BROKER_PASSWORD = "BROKERPASSWORD";
-	private static final String BROKER_URL = "BROKERURL";
-	private static final String BROKER_USER = "BROKERUSER";
-	private static final String TOPIC_ROOT = "MQTT_TOPIC_ROOT";
+	private static final String BROKER_PASSWORD = "PASSWORD";
+	private static final String BROKER_URI = "URI";
+	private static final String BROKER_USER = "USER";
+	private static final String TOPIC_ROOT = "TOPIC_ROOT";
 
 	private String brokerUrl;
 	private String brokerUser;
@@ -38,22 +39,25 @@ public final class MqttPublisherService implements Service, MeasureListener {
 	/**
 	 * Default constructor.
 	 * 
-	 * @param inMCache       The cache about to be published by this web service.
 	 * @param inServiceProps The properties for this service.
 	 */
-	public MqttPublisherService(MeasureCache inMCache, Properties inServiceProps) {
+	public MqttPublisherService(Properties inServiceProps) {
 		super();
 
-		inMCache.addMeasureListener(this);
-
-		ConfigHelper.validatePropertyExistence(inServiceProps, BROKER_URL);
-		brokerUrl = ConfigHelper.getTextProperty(inServiceProps, BROKER_URL, null);
+		ConfigHelper.validatePropertyExistence(inServiceProps, BROKER_URI);
+		brokerUrl = ConfigHelper.getTextProperty(inServiceProps, BROKER_URI, null);
 		brokerUser = ConfigHelper.getTextProperty(inServiceProps, BROKER_USER, null);
 		brokerPassword = ConfigHelper.getTextProperty(inServiceProps, BROKER_PASSWORD, null);
 		topicRoot = ConfigHelper.getTextProperty(inServiceProps, TOPIC_ROOT, DEFAULT_TOPIC_ROOT);
 		if (!topicRoot.endsWith(TOPIC_PATH_SEPARATOR)) {
 			topicRoot += TOPIC_PATH_SEPARATOR;
 		} // if
+	}
+
+	@Override
+	public void setMeasureCache(MeasureCache inMCache) {
+
+		inMCache.addMeasureListener(this);
 	}
 
 	@Override
@@ -73,8 +77,15 @@ public final class MqttPublisherService implements Service, MeasureListener {
 		try {
 			MqttClient lClient = getBrokerClient();
 			if (lClient != null) {
-				lClient.publish(topicRoot + inChangedMeasure.getId(), inChangedMeasure.getValue().getBytes(), 0, false);
-			} // if
+				lClient.publish(topicRoot + inChangedMeasure.getDeviceId() + "/" + inChangedMeasure.getId(),
+						inChangedMeasure.getValue().getBytes(), 0, false);
+				LogHelper.logInfo(this, "Published measure for device [{0}]: name={1}, value={2}",
+						inChangedMeasure.getDeviceId(), inChangedMeasure.getId(), inChangedMeasure.getValue());
+			} else {
+				LogHelper.logWarning(this,
+						"Skipped publishing of measure for device [{0}] due to previous problem: name={1}, value={2}",
+						inChangedMeasure.getDeviceId(), inChangedMeasure.getId(), inChangedMeasure.getValue());
+			} // else
 		} catch (MqttException e) {
 			LogHelper.logError(this,
 					"Failed to publish changed measure [{0}={1}] of device [{2}] to MQTT broker - Reason: {3}",
@@ -93,19 +104,19 @@ public final class MqttPublisherService implements Service, MeasureListener {
 	 */
 	private MqttClient getBrokerClient() {
 
-		if (brokerClient != null || !brokerClient.isConnected()) {
+		if (brokerClient == null || !brokerClient.isConnected()) {
 
 			MqttConnectOptions lOptions = new MqttConnectOptions();
 			lOptions.setConnectionTimeout(60);
-			lOptions.setAutomaticReconnect(true);
+			lOptions.setAutomaticReconnect(false);
 
 			// User
-			if (brokerUser != null) {
+			if (StringUtils.isNotBlank(brokerUser)) {
 				lOptions.setUserName(brokerUser);
 			} // if
 
 			// Password
-			if (brokerPassword != null) {
+			if (StringUtils.isNotBlank(brokerPassword)) {
 				lOptions.setPassword(brokerPassword.toCharArray());
 			} // if
 
@@ -114,8 +125,7 @@ public final class MqttPublisherService implements Service, MeasureListener {
 				brokerClient = new MqttClient(brokerUrl, getClass().getName());
 				brokerClient.connect(lOptions);
 			} catch (MqttException e) {
-				LogHelper.logError(this, "Failed to connect to MQTT broker [{0}] - Reason: {1}", brokerUrl,
-						e.getMessage());
+				LogHelper.logError(this, e, "Failed to connect to MQTT broker [{0}]", brokerUrl);
 			} // catch
 		} // if
 
