@@ -1,6 +1,8 @@
 package ginious.home.measure.device.sma;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 import de.re.easymodbus.exceptions.ModbusException;
 import de.re.easymodbus.modbusclient.ModbusClient;
@@ -8,6 +10,10 @@ import de.re.easymodbus.modbusclient.ModbusClient.RegisterOrder;
 import ginious.home.measure.device.AbstractMeasurementDevice;
 import ginious.home.measure.util.LogHelper;
 
+/**
+ * Device being capable of connecting a SMA converter via TCP/IP and reading
+ * values like current power production as well as daily and overall totals.
+ */
 public final class SmaConverterMeasurementDevice extends AbstractMeasurementDevice {
 
 	/**
@@ -67,22 +73,28 @@ public final class SmaConverterMeasurementDevice extends AbstractMeasurementDevi
 		private Setting(String inDefaultValue) {
 			defaultValue = inDefaultValue;
 		}
-
-		private String getDefaultValue() {
-			return defaultValue;
-		}
 	}
 
 	private int REQUEST_INTERVAL_MS = 10_000; // 10 seconds
 
-	private int INTERVAL_DAY_WH = 6; // 1 minute
+	/**
+	 * Registry holding the timestamp when a measurement was last requested from the
+	 * converter. It is required to preserve access timeouts.
+	 */
+	private Map<Measure, Long> lastMeasurementTS = new HashMap<>();
 
-	private int INTERVAL_TOTAL_KWH = 30; // 5 minutes
-
+	/**
+	 * Client for testing purposes only.
+	 */
 	private ModbusClient testClient;
 
-	public SmaConverterMeasurementDevice() {
-		super("sma_converter");
+	/**
+	 * Default device constructor.
+	 * 
+	 * @param inId The id of this device.
+	 */
+	public SmaConverterMeasurementDevice(String inId) {
+		super(inId);
 	}
 
 	/**
@@ -140,7 +152,14 @@ public final class SmaConverterMeasurementDevice extends AbstractMeasurementDevi
 		return outClient;
 	}
 
-	private String getValueFromSMA(Measure inValueId) {
+	/**
+	 * Gets the value of the given measure from the SMA converter including register
+	 * conversion.
+	 * 
+	 * @param inMeasure The measure to get from the converter.
+	 * @return The value.
+	 */
+	private String getValueFromSMA(Measure inMeasure) {
 
 		String outValue = "0";
 
@@ -149,7 +168,7 @@ public final class SmaConverterMeasurementDevice extends AbstractMeasurementDevi
 		try {
 			lClient = connect();
 			if (lClient != null) {
-				lRegisters = lClient.ReadHoldingRegisters(inValueId.start, inValueId.length);
+				lRegisters = lClient.ReadHoldingRegisters(inMeasure.start, inMeasure.length);
 			}
 		} catch (ModbusException | IOException e) {
 			return outValue;
@@ -166,11 +185,11 @@ public final class SmaConverterMeasurementDevice extends AbstractMeasurementDevi
 		if (lRegisters != null) {
 
 			// decode register bytes
-			if (inValueId.type == DataType.S32) {
+			if (inMeasure.type == DataType.S32) {
 				outValue = String.valueOf(ModbusClient.ConvertRegistersToDouble(lRegisters, RegisterOrder.HighLow));
-			} else if (inValueId.type == DataType.U32) {
+			} else if (inMeasure.type == DataType.U32) {
 				outValue = String.valueOf(ModbusClient.ConvertRegistersToDouble(lRegisters, RegisterOrder.HighLow));
-			} else if (inValueId.type == DataType.U64) {
+			} else if (inMeasure.type == DataType.U64) {
 				outValue = String.valueOf(ModbusClient.ConvertRegistersToLong(lRegisters, RegisterOrder.HighLow));
 			} // else if
 		} // if
@@ -178,9 +197,9 @@ public final class SmaConverterMeasurementDevice extends AbstractMeasurementDevi
 		return outValue;
 	}
 
-	protected void initDevice() {
+	public void initDevice() {
 
-		// register all mesaures provided by SMA converter
+		// register all measures provided by SMA converter
 		for (Measure lCurrMeasure : Measure.values()) {
 			registerMeasure(lCurrMeasure.id);
 		} // for
@@ -212,10 +231,11 @@ public final class SmaConverterMeasurementDevice extends AbstractMeasurementDevi
 		Float lSalesPerKWh = Float
 				.valueOf(getSettingAsText(Setting.SALESPERKWH.name(), Setting.SALESPERKWH.defaultValue));
 
-		// use lDeviceJustStarted && lIntervalCounter to read
-		// values that change less frequently
-		boolean lDeviceJustStarted = true;
-		int lIntervalCounter = 0;
+		// initialize map with measurement timestamps
+		for (Measure lCurrMeasure : Measure.values()) {
+			lastMeasurementTS.put(lCurrMeasure, null);
+		} // for
+
 		for (;;) {
 
 			// quit when device was switched off
@@ -223,41 +243,58 @@ public final class SmaConverterMeasurementDevice extends AbstractMeasurementDevi
 				break;
 			} // if
 
-			if (lDeviceJustStarted || lIntervalCounter == INTERVAL_DAY_WH) {
+			// ////////////////////////////
+			// //// Day Wh + Sales
+			// ////////////////////////////
+			Measure lCurrMeasure = Measure.DAY_WH;
+			Long lNow = System.currentTimeMillis();
+			Long lLastMeasureTS = lastMeasurementTS.get(lCurrMeasure);
+			if (lLastMeasureTS == null || (lNow - lLastMeasureTS) > lCurrMeasure.refreshAfter) {
 
-				// Day Wh
-				Integer lDayWh = Integer.valueOf(getValueFromSMA(Measure.DAY_WH));
-				setMeasureValue(Measure.DAY_WH.id, String.valueOf(lDayWh));
+				Integer lDayWh = Integer.valueOf(getValueFromSMA(lCurrMeasure));
+				setMeasureValue(lCurrMeasure.id, String.valueOf(lDayWh));
+				lastMeasurementTS.put(lCurrMeasure, lNow);
 
-				// Daily Sales
 				Float lSalesPerDay = (float) lDayWh / 1000 * lSalesPerKWh;
 				setMeasureValue(Measure.DAY_SALE.id, String.valueOf(lSalesPerDay));
+				lastMeasurementTS.put(Measure.DAY_SALE, lNow);
 			} // if
 
-			if (lDeviceJustStarted || lIntervalCounter == INTERVAL_TOTAL_KWH) {
+			// ////////////////////////////
+			// //// Total MWh + Sales
+			// ////////////////////////////
+			lCurrMeasure = Measure.TOTAL_KWH;
+			lNow = System.currentTimeMillis();
+			lLastMeasureTS = lastMeasurementTS.get(lCurrMeasure);
+			if (lLastMeasureTS == null || (lNow - lLastMeasureTS) > lCurrMeasure.refreshAfter) {
 
-				// Total MWh
-				Integer lTotalKWh = Integer.valueOf(getValueFromSMA(Measure.TOTAL_KWH));
-				setMeasureValue(Measure.TOTAL_KWH.id, String.valueOf((float) lTotalKWh / 1000));
+				Integer lTotalKWh = Integer.valueOf(getValueFromSMA(lCurrMeasure));
+				setMeasureValue(lCurrMeasure.id, String.valueOf((float) lTotalKWh / 1000));
+				lastMeasurementTS.put(lCurrMeasure, lNow);
 
-				// Total Sales
 				Float lSalesTotal = (float) lTotalKWh * lSalesPerKWh;
 				setMeasureValue(Measure.TOTAL_SALE.id, String.valueOf(lSalesTotal));
-
-				lIntervalCounter = 0;
+				lastMeasurementTS.put(Measure.TOTAL_SALE, lNow);
 			} // if
 
-			// Current Wh
-			Integer lCurrentW = Integer.valueOf(getValueFromSMA(Measure.CURRENT_W));
-			if (lCurrentW < 0) {
-				lCurrentW = 0;
-			} // if
-			setMeasureValue(Measure.CURRENT_W.id, String.valueOf(lCurrentW));
+			// ////////////////////////////
+			// //// Current Wh
+			// ////////////////////////////
+			lCurrMeasure = Measure.CURRENT_W;
+			lNow = System.currentTimeMillis();
+			lLastMeasureTS = lastMeasurementTS.get(lCurrMeasure);
+			if (lLastMeasureTS == null || (lNow - lLastMeasureTS) > lCurrMeasure.refreshAfter) {
 
+				Integer lCurrentW = Integer.valueOf(getValueFromSMA(lCurrMeasure));
+				if (lCurrentW < 0) {
+					lCurrentW = 0;
+				} // if
+				setMeasureValue(lCurrMeasure.id, String.valueOf(lCurrentW));
+				lastMeasurementTS.put(lCurrMeasure, lNow);
+			} // if
+
+			// obey minimum waiting time between requests
 			sleep(REQUEST_INTERVAL_MS);
-
-			lIntervalCounter++;
-			lDeviceJustStarted = false;
 		} // for
 	}
 }
