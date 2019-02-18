@@ -24,7 +24,7 @@ public class JsonMeasuresSerializerTest {
 		}
 
 		@Override
-		protected void initDevice() {
+		public void initDevice() {
 		}
 
 		@Override

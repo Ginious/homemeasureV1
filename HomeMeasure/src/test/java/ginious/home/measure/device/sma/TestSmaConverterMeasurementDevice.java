@@ -13,7 +13,7 @@ public class TestSmaConverterMeasurementDevice implements MeasurementDevice {
 	public TestSmaConverterMeasurementDevice() {
 		super();
 
-		device = new SmaConverterMeasurementDevice();
+		device = new SmaConverterMeasurementDevice("test");
 	}
 
 	@Override
@@ -48,5 +48,10 @@ public class TestSmaConverterMeasurementDevice implements MeasurementDevice {
 	
 	void setModbusClient(ModbusClient inMockClient) {
 		device.setModbusClient(inMockClient);
+	}
+
+	@Override
+	public void initDevice() {
+		
 	}
 }
