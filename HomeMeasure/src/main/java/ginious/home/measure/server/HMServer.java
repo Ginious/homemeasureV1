@@ -136,16 +136,19 @@ public final class HMServer {
 
 			if (lCurrSetting.endsWith(DEVICE_TYPE_POSTFIX)) {
 
+				String lDeviceId = StringUtils.substringBefore(lCurrSetting, CONFIG_KEY_SEPARATOR);
 				MeasurementDevice lDevice;
 				String lDeviceTypeName = aOverallDeviceConfig.getProperty(lCurrSetting);
 				try {
 					Class<?> lDeviceClass = Class.forName(lDeviceTypeName);
-					lDevice = (MeasurementDevice) lDeviceClass.newInstance();
+					Constructor<?> lDeviceConstructor = lDeviceClass.getConstructor(String.class);
+					lDevice = (MeasurementDevice) lDeviceConstructor.newInstance(lDeviceId);
 				} catch (Throwable t) {
 					throw new MeasurementDeviceInitializationException(lDeviceTypeName, t.getMessage());
 				} // catch
 
 				initDeviceConfig(lDevice, aOverallDeviceConfig);
+				lDevice.initDevice();
 
 				lDevices.add(lDevice);
 				LogHelper.logInfo(this, "Initialized device [{0}] from type [{1}]", lDevice.getId(),
@@ -268,7 +271,8 @@ public final class HMServer {
 
 			runningDevices.add(lCurrDevice);
 
-			LogHelper.logInfo(this, "Starting device [{0}] ...", lCurrDevice.getId());
+			LogHelper.logInfo(this, "Starting device [{0}/{1}] ...", lCurrDevice.getClass().getSimpleName(),
+					lCurrDevice.getId());
 
 			Runnable lRunnableDevice = new RunnableMeasureDeviceSupport(lCurrDevice);
 			Thread lDeviceThread = new Thread(lRunnableDevice, lCurrDevice.getClass().getSimpleName());
@@ -282,7 +286,7 @@ public final class HMServer {
 	private void startService() {
 
 		LogHelper.logInfo(this, "Starting service [{0}] ...", typeOfService.name(), service.getClass().getSimpleName());
-		
+
 		service.setMeasureCache(cache);
 		service.startService();
 	}
@@ -292,7 +296,7 @@ public final class HMServer {
 	 * devices and the corresponding data service.
 	 * 
 	 * @throws MeasurementDeviceInitializationException In case that a device could
-	 *                                                   not be initialized properly.
+	 *                                                  not be initialized properly.
 	 */
 	public void startup() throws MeasurementDeviceInitializationException {
 
