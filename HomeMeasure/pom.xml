@@ -28,7 +28,7 @@
 			<version>1.0.1</version>
 		</dependency>
 
-		<!-- Optional when running HMServer as MQTT service -->
+		<!-- Optional: only required when running HMServer as MQTT service -->
 		<dependency>
 			<groupId>org.eclipse.paho</groupId>
 			<artifactId>org.eclipse.paho.client.mqttv3</artifactId>
@@ -36,7 +36,7 @@
 			<optional>true</optional>
 		</dependency>
 
-		<!-- Optional when running HMServer as WebService -->
+		<!-- Optional: only required when running HMServer as WebService -->
 		<dependency>
 			<groupId>io.javalin</groupId>
 			<artifactId>javalin</artifactId>
@@ -44,6 +44,13 @@
 			<optional>true</optional>
 		</dependency>
 
+		<!-- Optional: only required when HMServer publishes into InfluxDB -->
+		<dependency>
+			<groupId>org.influxdb</groupId>
+			<artifactId>influxdb-java</artifactId>
+			<version>2.15</version>
+		</dependency>
+		
 		<!-- Radio device -->
 		<dependency>
 			<groupId>com.googlecode.json-simple</groupId>
