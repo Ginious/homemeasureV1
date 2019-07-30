@@ -17,7 +17,7 @@ import ginious.home.measure.util.ConfigHelper;
  */
 public abstract class AbstractRecorder implements Recorder {
 
-	private static final String INCLUSION_MEASURES = "INCLUSION_MEASURES";
+	private static final String INCLUDE_MEASURES = "INCLUDE_MEASURES";
 
 	private String id;
 
@@ -66,7 +66,7 @@ public abstract class AbstractRecorder implements Recorder {
 	 */
 	private void init(Properties inProps) {
 
-		String lInclusionMeasures = (String) inProps.get(INCLUSION_MEASURES);
+		String lInclusionMeasures = (String) inProps.get(INCLUDE_MEASURES);
 		String[] lDeviceMeasuresToInclude = StringUtils.split(lInclusionMeasures, ",;");
 		if (lDeviceMeasuresToInclude != null) {
 
